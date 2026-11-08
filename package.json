@@ -1,0 +1,26 @@
+{
+  "name": "orvelia-enterprise",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ORVÉLIA — Enterprise E-Commerce Platform (Luxury Meets Modern Technology)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "test": "python tests/run_verification_suite.py"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "next": "^14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "prisma": "^5.22.0",
+    "typescript": "^5.6.3"
+  }
+}

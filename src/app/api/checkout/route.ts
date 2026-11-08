@@ -91,3 +91,21 @@ export async function handleCheckoutInitiate(req: InitiateCheckoutRequest) {
     },
   };
 }
+
+export async function POST(request: Request) {
+  try {
+    const json = await request.json();
+    const res = await handleCheckoutInitiate(json);
+    return Response.json(res.body, { status: res.status });
+  } catch (err: any) {
+    return Response.json({ error: 'INVALID_REQUEST', details: err?.message }, { status: 400 });
+  }
+}
+
+export async function GET() {
+  return Response.json({
+    status: 'ACTIVE',
+    service: 'ORVÉLIA Checkout Initiation API',
+    architect: 'Nathan Zoua (NZ)',
+  });
+}

@@ -30,7 +30,9 @@ def contrast_ratio(c1: str, c2: str) -> float:
 
 def run_tests():
     # 1. Verify all 25 required models in schema.prisma
-    with open("artifacts/file_generation/ttl=63d/intermediate/orvelia-enterprise/prisma/schema.prisma", "r", encoding="utf-8") as f:
+    import os
+    schema_path = "prisma/schema.prisma" if os.path.exists("prisma/schema.prisma") else "artifacts/file_generation/ttl=63d/intermediate/orvelia-enterprise/prisma/schema.prisma"
+    with open(schema_path, "r", encoding="utf-8") as f:
         schema_text = f.read()
 
     required_models = [
@@ -59,7 +61,8 @@ def run_tests():
     print("[PASS] 2/7 Payment State Machine: Legal and illegal transitions verified.")
 
     # 3. Verify Cameroon Payment Methods vs Wave Rule (Section 9.C)
-    with open("artifacts/file_generation/ttl=63d/output/orvelia_platform.html", "r", encoding="utf-8") as f:
+    html_path = "public/index.html" if os.path.exists("public/index.html") else "artifacts/file_generation/ttl=63d/output/orvelia_platform.html"
+    with open(html_path, "r", encoding="utf-8") as f:
         app_html = f.read()
 
     assert "MTN_MOMO_CM" in app_html and "ORANGE_MONEY_CM" in app_html

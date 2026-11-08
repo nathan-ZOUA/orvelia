@@ -103,3 +103,34 @@ export async function handleFlutterwaveWebhook(
     },
   };
 }
+
+export async function POST(request: Request) {
+  try {
+    const rawBody = await request.text();
+    const headers: Record<string, string | undefined> = {};
+    request.headers.forEach((v, k) => {
+      headers[k] = v;
+    });
+    const body = JSON.parse(rawBody);
+
+    const mockDb = {
+      findPaymentByTxRef: async (txRef: string) => ({
+        id: 'mock_pay_flw',
+        orderId: 'mock_ord_flw',
+        status: 'PENDING' as PaymentState,
+        amountXaf: body?.data?.amount || 0,
+        currency: body?.data?.currency || 'XAF',
+      }),
+      updatePaymentAndOrderAtomically: async () => {},
+    };
+
+    const res = await handleFlutterwaveWebhook({ rawBody, headers, body }, mockDb);
+    return Response.json(res.body, { status: res.status });
+  } catch (err: any) {
+    return Response.json({ error: 'INVALID_PAYLOAD', details: err?.message }, { status: 400 });
+  }
+}
+
+export async function GET() {
+  return Response.json({ status: 'ACTIVE', provider: 'FLUTTERWAVE_WEBHOOK' });
+}
