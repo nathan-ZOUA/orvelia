@@ -4,9 +4,11 @@
   "private": true,
   "description": "ORVÉLIA — Enterprise E-Commerce Platform (Luxury Meets Modern Technology)",
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "next start",
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "prisma generate",
+    "db:push": "prisma db push --accept-data-loss",
+    "db:migrate": "prisma migrate deploy",
     "postinstall": "prisma generate",
     "test": "python tests/run_verification_suite.py"
   },
