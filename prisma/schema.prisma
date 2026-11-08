@@ -1,0 +1,544 @@
+// ============================================================================
+// ORVÉLIA — ENTERPRISE E-COMMERCE PLATFORM | PRISMA RELATIONAL SCHEMA
+// Architect & Lead Engineering: Nathan Zoua (NZ)
+// Database: PostgreSQL 16+ | ORM: Prisma 5+
+// Strictly covers all 25 required relational entities with ACID constraints
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  CUSTOMER
+  SUPPORT_AGENT
+  CATALOG_MANAGER
+  FINANCE_ADMIN
+  SUPER_ADMIN
+}
+
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PAID
+  PREPARING
+  SHIPPED
+  IN_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  FLUTTERWAVE
+  CINETPAY
+}
+
+enum PaymentMethodType {
+  CARD_VISA_MASTERCARD
+  MTN_MOMO_CM
+  ORANGE_MONEY_CM
+  WAVE_SN_CI
+}
+
+enum ShipmentStatus {
+  PENDING_PICKUP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RETURNED
+}
+
+enum ConversationStatus {
+  OPEN
+  ASSIGNED
+  PENDING_CUSTOMER
+  RESOLVED
+}
+
+// 1. Users
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String?
+  firstName           String
+  lastName            String
+  phone               String?
+  preferredLocale     String    @default("fr") // fr | en | ar
+  preferredCurrency   String    @default("XAF") // XAF | EUR | USD
+  preferredTheme      String    @default("dark") // light | dark
+  emailVerifiedAt     DateTime?
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+  marketingConsent    Boolean   @default(false)
+  deletedAt           DateTime? // GDPR / Account deletion support
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  roleId              String
+  role                Role      @relation(fields: [roleId], references: [id])
+
+  addresses           Address[]
+  carts               Cart[]
+  orders              Order[]
+  reviews             Review[]
+  wishlists           Wishlist[]
+  customerChats       Conversation[] @relation("CustomerConversations")
+  agentChats          Conversation[] @relation("AgentConversations")
+  sentMessages        Message[]
+  notifications       Notification[]
+
+  @@index([email])
+  @@index([roleId])
+}
+
+// 2. Roles
+model Role {
+  id          String   @id @default(cuid())
+  name        RoleName @unique
+  description String
+  permissions Json     // Granular RBAC array e.g. ["products:write", "orders:refund"]
+  users       User[]
+  createdAt   DateTime @default(now())
+}
+
+// 3. Addresses
+model Address {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String   @default("Domicile")
+  fullName     String
+  phone        String
+  streetLine1  String
+  streetLine2  String?
+  city         String
+  region       String
+  postalCode   String?
+  countryCode  String   @default("CM") // CM, FR, CI, SN, AE, US
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shippingOrders Order[] @relation("ShippingAddress")
+  billingOrders  Order[] @relation("BillingAddress")
+
+  @@index([userId, countryCode])
+}
+
+// 4. Categories
+model Category {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  nameFr      String
+  nameEn      String
+  nameAr      String
+  descFr      String
+  descEn      String
+  descAr      String
+  heroImage   String
+  parentId    String?
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id])
+  children    Category[] @relation("SubCategories")
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  products    Product[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([slug])
+}
+
+// 5. Collections
+model Collection {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  titleFr     String
+  titleEn     String
+  titleAr     String
+  subtitleFr  String
+  subtitleEn  String
+  subtitleAr  String
+  coverImage  String
+  isFeatured  Boolean   @default(true)
+  shopifyGid  String?   @unique // Optional Shopify sync GID
+  products    Product[] @relation("CollectionProducts")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// 6. Products
+model Product {
+  id              String           @id @default(cuid())
+  sku             String           @unique
+  slug            String           @unique
+  brand           String           @default("ORVÉLIA")
+  nameFr          String
+  nameEn          String
+  nameAr          String
+  descriptionFr   String           @db.Text
+  descriptionEn   String           @db.Text
+  descriptionAr   String           @db.Text
+  priceXaf        Int              // Base price in FCFA (XAF) integer
+  compareAtXaf    Int?             // Old price if on sale
+  priceEur        Decimal          @db.Decimal(10, 2)
+  priceUsd        Decimal          @db.Decimal(10, 2)
+  badgeFr         String?
+  badgeEn         String?
+  badgeAr         String?
+  videoUrl        String?
+  isPublished     Boolean          @default(true)
+  isFeatured      Boolean          @default(false)
+  shopifyProductId String?         @unique
+  categoryId      String
+  category        Category         @relation(fields: [categoryId], references: [id])
+  collections     Collection[]     @relation("CollectionProducts")
+  images          ProductImage[]
+  variants        ProductVariant[]
+  reviews         Review[]
+  wishlists       Wishlist[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([categoryId, isPublished])
+  @@index([slug])
+}
+
+// 7. ProductImages
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altFr     String
+  altEn     String
+  altAr     String
+  isPrimary Boolean  @default(false)
+  isHover   Boolean  @default(false)
+  sortOrder Int      @default(0)
+}
+
+// 8. ProductVariants
+model ProductVariant {
+  id          String      @id @default(cuid())
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  skuVariant  String      @unique
+  size        String      // e.g. "S", "M", "L", "42 mm", "50 ml", "Unique"
+  colorNameFr String
+  colorNameEn String
+  colorNameAr String
+  colorHex    String      // e.g. "#111111"
+  priceDeltaXaf Int       @default(0)
+  inventory   Inventory?
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+
+  @@index([productId])
+}
+
+// 9. Inventory
+model Inventory {
+  id                String         @id @default(cuid())
+  variantId         String         @unique
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantityAvailable Int            @default(0)
+  quantityReserved  Int            @default(0)
+  lowStockThreshold Int            @default(3)
+  warehouseLocation String         @default("DOUALA_HUB_01")
+  updatedAt         DateTime       @updatedAt
+}
+
+// 10. Carts
+model Cart {
+  id          String     @id @default(cuid())
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionToken String    @unique
+  couponId    String?
+  coupon      Coupon?    @relation(fields: [couponId], references: [id])
+  currency    String     @default("XAF")
+  items       CartItem[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// 11. CartItems
+model CartItem {
+  id        String         @id @default(cuid())
+  cartId    String
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+  quantity  Int            @default(1)
+  addedAt   DateTime       @default(now())
+
+  @@unique([cartId, variantId])
+}
+
+// 12. Orders
+model Order {
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique // e.g. ORV-2026-8941
+  userId            String?
+  user              User?       @relation(fields: [userId], references: [id])
+  guestEmail        String?
+  guestPhone        String?
+  status            OrderStatus @default(AWAITING_PAYMENT)
+  currency          String      @default("XAF")
+  subtotalXaf       Int
+  discountXaf       Int         @default(0)
+  shippingCostXaf   Int
+  taxAmountXaf      Int
+  totalAmountXaf    Int         // Strictly recalculated server-side
+  couponCodeUsed    String?
+  shippingAddressId String?
+  shippingAddress   Address?    @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  billingAddressId  String?
+  billingAddress    Address?    @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  shippingSnapshot  Json        // Immutable address snapshot at order time
+  notes             String?
+  items             OrderItem[]
+  payments          Payment[]
+  shipments         Shipment[]
+  refunds           Refund[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([orderNumber])
+  @@index([userId, status])
+}
+
+// 13. OrderItems
+model OrderItem {
+  id              String         @id @default(cuid())
+  orderId         String
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  productTitleSnap String
+  variantLabelSnap String
+  quantity        Int
+  unitPriceXaf    Int
+  totalLineXaf    Int
+}
+
+// 14. Payments
+model Payment {
+  id                 String            @id @default(cuid())
+  orderId            String
+  order              Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider           PaymentProvider   @default(FLUTTERWAVE)
+  methodType         PaymentMethodType
+  status             PaymentStatus     @default(PENDING)
+  txRef              String            @unique // Idempotent merchant reference
+  providerTxId       String?           @unique // Flutterwave transaction_id
+  idempotencyKey     String            @unique
+  amountXaf          Int
+  currency           String            @default("XAF")
+  countryCode        String            @default("CM")
+  customerPhoneMasked String?          // Never stores full PAN or CVV
+  cardLast4          String?
+  cardBrand          String?
+  verifiedAt         DateTime?
+  events             PaymentEvent[]
+  refunds            Refund[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([txRef])
+  @@index([orderId, status])
+}
+
+// 15. PaymentEvents
+model PaymentEvent {
+  id             String   @id @default(cuid())
+  paymentId      String
+  payment        Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  eventType      String   // e.g. "charge.completed", "webhook.verified", "status.transition"
+  previousStatus PaymentStatus?
+  newStatus      PaymentStatus
+  signatureValid Boolean  @default(false)
+  rawPayloadHash String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([paymentId])
+}
+
+// 16. Refunds
+model Refund {
+  id               String   @id @default(cuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id])
+  paymentId        String
+  payment          Payment  @relation(fields: [paymentId], references: [id])
+  amountXaf        Int
+  reason           String
+  providerRefundId String?  @unique
+  status           String   @default("PROCESSED")
+  processedById    String?
+  createdAt        DateTime @default(now())
+}
+
+// 17. Coupons
+model Coupon {
+  id              String    @id @default(cuid())
+  code            String    @unique // e.g. "ORVELIA10", "PRIVILEGE20"
+  descriptionFr   String
+  descriptionEn   String
+  descriptionAr   String
+  discountPercent Int?
+  discountFixedXaf Int?
+  minOrderXaf     Int       @default(0)
+  maxUses         Int       @default(500)
+  usedCount       Int       @default(0)
+  startsAt        DateTime  @default(now())
+  expiresAt       DateTime? // Real expiration date for promotional countdowns
+  isActive        Boolean   @default(true)
+  carts           Cart[]
+}
+
+// 18. Reviews
+model Review {
+  id                 String   @id @default(cuid())
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating             Int      // 1 to 5
+  title              String
+  comment            String   @db.Text
+  isVerifiedPurchase Boolean  @default(true)
+  isApproved         Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  @@index([productId, isApproved])
+}
+
+// 19. Wishlists
+model Wishlist {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+// 20. Conversations (Live Customer Support Chat)
+model Conversation {
+  id              String             @id @default(cuid())
+  customerId      String?
+  customer        User?              @relation("CustomerConversations", fields: [customerId], references: [id])
+  guestName       String?
+  guestEmail      String?
+  assignedAgentId String?
+  assignedAgent   User?              @relation("AgentConversations", fields: [assignedAgentId], references: [id])
+  relatedOrderRef String?
+  subject         String
+  status          ConversationStatus @default(OPEN)
+  messages        Message[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([status, assignedAgentId])
+}
+
+// 21. Messages
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String?
+  sender         User?        @relation(fields: [senderId], references: [id])
+  senderRole     String       // "CUSTOMER" | "AGENT"
+  content        String       @db.Text
+  attachmentUrl  String?
+  attachmentName String?
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// 22. Shipments
+model Shipment {
+  id                String         @id @default(cuid())
+  orderId           String
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  carrierName       String         // e.g. "DHL Express International", "ORVÉLIA Conciergerie Douala/Yaoundé"
+  shippingMethod    String         // "STANDARD", "EXPRESS", "CONCIERGE_VIP"
+  trackingNumber    String         @unique
+  trackingUrl       String?
+  status            ShipmentStatus @default(PENDING_PICKUP)
+  estimatedDelivery DateTime
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+}
+
+// 23. Notifications
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleFr   String
+  titleEn   String
+  titleAr   String
+  bodyFr    String
+  bodyEn    String
+  bodyAr    String
+  type      String    // "ORDER_STATUS", "PAYMENT_CONFIRMED", "CHAT_REPLY", "PROMO"
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+// 24. NewsletterSubscribers
+model NewsletterSubscriber {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  locale          String    @default("fr")
+  consentGranted  Boolean   @default(true)
+  consentIpHash   String
+  consentTimestamp DateTime @default(now())
+  confirmedAt     DateTime?
+  unsubscribedAt  DateTime?
+}
+
+// 25. StoreSettings
+model StoreSettings {
+  id                    String   @id @default("ORVELIA_GLOBAL_CONFIG")
+  storeName             String   @default("ORVÉLIA")
+  creativeDirector      String   @default("Nathan Zoua (NZ)")
+  defaultLocale         String   @default("fr")
+  supportedLocales      Json     // ["fr", "en", "ar"]
+  defaultCurrency       String   @default("XAF")
+  taxRatePercent        Decimal  @default(19.25) @db.Decimal(5, 2) // TVA Cameroun 19.25%
+  standardShippingXaf   Int      @default(5000)
+  expressShippingXaf    Int      @default(15000)
+  freeShippingThreshold Int      @default(250000)
+  flutterwaveEnabled    Boolean  @default(true)
+  cinetpayEnabled       Boolean  @default(false)
+  waveEnabledCountries  Json     // ["SN", "CI"] — Explicitly disabled for CM unless validated
+  shopifySyncEnabled    Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+}
